@@ -91,3 +91,27 @@ docker compose up --build
 ```
 
 Dockerfile 默认使用 `mcr.microsoft.com/devcontainers/javascript-node:22-bookworm`，避免在 Docker Hub 访问不稳定时卡在基础镜像拉取。
+
+## GitHub Actions 自动构建
+
+仓库已内置 `.github/workflows/build-and-publish.yml`：
+
+- 推送到 `main` 分支时自动执行类型检查、Next.js 构建和 Docker 镜像构建。
+- Pull Request 到 `main` 时执行类型检查和构建校验，但不发布镜像。
+- 在 GitHub Actions 页面可以手动点击 `Run workflow` 触发一次构建。
+- `main` 分支构建成功后会发布镜像到 GitHub Container Registry：
+
+```text
+ghcr.io/liuxingar/subconvert:latest
+```
+
+镜像发布后可用 `docker run` 本地启动：
+
+```bash
+docker run -d --name subboost-local \
+  -p 3000:3000 \
+  -v subboost-data:/app/data \
+  -e ADMIN_PASSWORD=change-me \
+  -e LOCAL_USER_PASSWORD=local \
+  ghcr.io/liuxingar/subconvert:latest
+```
