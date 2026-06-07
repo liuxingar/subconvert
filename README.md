@@ -110,7 +110,7 @@ npm run build
 docker compose up --build
 ```
 
-Dockerfile 默认使用 `mcr.microsoft.com/devcontainers/javascript-node:22-bookworm`，避免在 Docker Hub 访问不稳定时卡在基础镜像拉取。
+Dockerfile 使用 `node:22-bookworm-slim` 多阶段构建，最终镜像只保留 Node 运行时、Next standalone 产物、静态资源和运行所需依赖，不包含 devcontainer、Git、编译器等开发工具链。
 
 ## GitHub Actions 自动构建
 
