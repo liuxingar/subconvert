@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Copy, Download, Edit3, ExternalLink, FileCode, Link2, Loader2, LogOut, Plus, RefreshCw, Save, Settings, Sparkles, Trash2 } from "lucide-react";
+import QRCode from "qrcode";
+import { CalendarClock, Copy, Download, Edit3, ExternalLink, FileCode, Link2, Loader2, LogOut, Plus, QrCode, RefreshCw, Save, Settings, Sparkles, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SubscriptionItem = {
@@ -52,6 +53,7 @@ export function DashboardClient() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<SubscriptionItem | null>(null);
   const [settingsItem, setSettingsItem] = useState<SubscriptionItem | null>(null);
+  const [manualCopyText, setManualCopyText] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
 
   async function load() {
@@ -128,9 +130,14 @@ export function DashboardClient() {
   }
 
   async function copy(url: string) {
-    const full = `${window.location.origin}${url}`;
-    await navigator.clipboard.writeText(full);
-    setNotice(`已复制：${full}`);
+    const full = getFullUrl(url);
+    const copied = await copyText(full);
+    if (copied) {
+      setNotice(`已复制：${full}`);
+      return;
+    }
+    setManualCopyText(full);
+    setNotice("自动复制失败，请在弹窗中手动复制订阅链接");
   }
 
   function editSubscription(item: SubscriptionItem) {
@@ -226,6 +233,7 @@ export function DashboardClient() {
                   <ActionButton label="设置" tone="slate" icon={<Settings className="h-4 w-4" />} onClick={() => setSettingsItem(item)} />
                   <ActionButton label="刷新" tone="emerald" icon={refreshingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} onClick={() => refresh(item)} disabled={refreshingId === item.id} />
                   <ActionButton label="复制链接" tone="blue" icon={<Copy className="h-4 w-4" />} onClick={() => copy(item.url)} />
+                  <ActionButton label="二维码" tone="cyan" icon={<QrCode className="h-4 w-4" />} onClick={() => setDetailItem(item)} />
                   <ActionButton label="下载" tone="cyan" icon={<Download className="h-4 w-4" />} onClick={() => download(item.url, item.name)} />
                   <ActionButton label="删除" tone="rose" icon={<Trash2 className="h-4 w-4" />} onClick={() => remove(item.id)} />
                 </div>
@@ -272,6 +280,7 @@ export function DashboardClient() {
       </div>
 
       {detailItem && <SubscriptionDetail item={detailItem} onClose={() => setDetailItem(null)} onCopy={copy} />}
+      {manualCopyText && <ManualCopyDialog value={manualCopyText} onClose={() => setManualCopyText("")} />}
       {settingsItem && (
         <SubscriptionSettings
           item={settingsItem}
@@ -309,26 +318,54 @@ function ActionButton({ label, icon, onClick, disabled, tone }: { label: string;
 }
 
 function SubscriptionDetail({ item, onClose, onCopy }: { item: SubscriptionItem; onClose: () => void; onCopy: (url: string) => void }) {
-  const fullUrl = typeof window === "undefined" ? item.url : `${window.location.origin}${item.url}`;
+  const fullUrl = typeof window === "undefined" ? item.url : getFullUrl(item.url);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    QRCode.toDataURL(fullUrl, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 260,
+      color: {
+        dark: "#111827",
+        light: "#ffffff"
+      }
+    })
+      .then((value) => {
+        if (active) setQrDataUrl(value);
+      })
+      .catch(() => {
+        if (active) setQrDataUrl("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [fullUrl]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
       <div className="panel w-full max-w-2xl rounded-2xl p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="inline-flex items-center gap-2 text-xl font-bold"><Link2 className="h-6 w-6 text-indigo-300" />订阅设置</h3>
+            <h3 className="inline-flex items-center gap-2 text-xl font-bold"><QrCode className="h-6 w-6 text-indigo-300" />订阅二维码</h3>
             <p className="mt-1 text-[13px] text-white/45">{item.name}</p>
           </div>
           <button className="btn h-9 w-9 p-0" onClick={onClose}>×</button>
         </div>
-        <div className="mt-5 space-y-3 text-[13px]">
-          <InfoRow label="订阅链接" value={fullUrl} />
-          <InfoRow label="自动更新" value={item.settings.autoUpdate ? `开启，每 ${item.settings.updateIntervalHours} 小时` : "关闭，返回静态 YAML"} />
-          <InfoRow label="智能匹配节点" value={item.settings.smartMatchNodes ? "开启" : "关闭"} />
-          <InfoRow label="导入源" value={`${item.sourceCount} 个`} />
-          <InfoRow label="缓存时间" value={item.cachedAt ? formatDate(item.cachedAt) : "暂无缓存"} />
-          <InfoRow label="最后刷新尝试" value={item.lastRefreshAttemptAt ? formatDate(item.lastRefreshAttemptAt) : "暂无记录"} />
-          <InfoRow label="刷新错误" value={item.refreshError || "无"} />
-          <InfoRow label="Token" value={item.token} />
+        <div className="mt-5 grid gap-5 md:grid-cols-[auto_1fr]">
+          <div className="rounded-xl border border-white/10 bg-white p-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+            {qrDataUrl ? <img src={qrDataUrl} alt="订阅链接二维码" className="h-64 w-64" /> : <div className="flex h-64 w-64 items-center justify-center text-sm text-slate-500">二维码生成中</div>}
+          </div>
+          <div className="space-y-3 text-[13px]">
+            <InfoRow label="订阅链接" value={fullUrl} />
+            <InfoRow label="自动更新" value={item.settings.autoUpdate ? `开启，每 ${item.settings.updateIntervalHours} 小时` : "关闭，返回静态 YAML"} />
+            <InfoRow label="智能匹配节点" value={item.settings.smartMatchNodes ? "开启" : "关闭"} />
+            <InfoRow label="导入源" value={`${item.sourceCount} 个`} />
+            <InfoRow label="缓存时间" value={item.cachedAt ? formatDate(item.cachedAt) : "暂无缓存"} />
+            <InfoRow label="最后刷新尝试" value={item.lastRefreshAttemptAt ? formatDate(item.lastRefreshAttemptAt) : "暂无记录"} />
+            <InfoRow label="刷新错误" value={item.refreshError || "无"} />
+          </div>
         </div>
         <div className="mt-6 flex justify-end gap-3">
           <button className="btn" onClick={onClose}>关闭</button>
@@ -450,8 +487,69 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ManualCopyDialog({ value, onClose }: { value: string; onClose: () => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+      <div className="panel w-full max-w-xl rounded-2xl p-6 shadow-[0_24px_90px_rgba(0,0,0,0.45)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="inline-flex items-center gap-2 text-xl font-bold"><Copy className="h-6 w-6 text-indigo-300" />手动复制订阅链接</h3>
+            <p className="mt-1 text-[13px] text-white/45">当前浏览器限制了自动复制，请选中下方链接复制。</p>
+          </div>
+          <button className="btn h-9 w-9 p-0" onClick={onClose}>×</button>
+        </div>
+        <input ref={inputRef} className="input mt-5 font-mono text-[13px]" readOnly value={value} onFocus={(event) => event.currentTarget.select()} />
+        <div className="mt-5 flex justify-end gap-3">
+          <button className="btn" onClick={onClose}>关闭</button>
+          <button className="btn btn-primary" onClick={() => inputRef.current?.select()}><Copy className="h-4 w-4" />选中链接</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function getFullUrl(url: string) {
+  if (typeof window === "undefined") return url;
+  return new URL(url, window.location.origin).toString();
+}
+
+async function copyText(text: string) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall back to the textarea path below.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
 }
