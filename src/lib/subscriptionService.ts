@@ -1,4 +1,5 @@
 import { getTemplate } from "@/data/templates";
+import { parseAppTimestampMs } from "@/lib/date";
 import { generateConfig } from "@/lib/generator";
 import { parseSources, parseYamlNodes } from "@/lib/parser";
 import { safeFetchText } from "@/lib/safeFetch";
@@ -49,7 +50,7 @@ export function normalizeSubscriptionSettings(settings: StoredSubscriptionConfig
 
 export function shouldUseSubscriptionCache(config: StoredSubscriptionConfig, cachedAt: string | null, now = Date.now()) {
   if (config.settings?.autoUpdate !== true || !cachedAt) return false;
-  const cachedTime = new Date(cachedAt).getTime();
+  const cachedTime = parseAppTimestampMs(cachedAt);
   if (!Number.isFinite(cachedTime)) return false;
   return now - cachedTime < getUpdateIntervalMs(config);
 }
@@ -89,7 +90,7 @@ function getUpdateIntervalMs(config: StoredSubscriptionConfig) {
 
 function latestTimestamp(values: Array<string | null | undefined>) {
   const times = values
-    .map((value) => (value ? new Date(value).getTime() : Number.NaN))
+    .map((value) => parseAppTimestampMs(value))
     .filter((value) => Number.isFinite(value));
   return times.length ? Math.max(...times) : 0;
 }

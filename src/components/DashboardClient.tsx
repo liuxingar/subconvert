@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { CalendarClock, Copy, Download, Edit3, ExternalLink, FileCode, Link2, Loader2, LogOut, Plus, QrCode, RefreshCw, Save, Settings, Sparkles, Trash2 } from "lucide-react";
+import { formatAppDate } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 type SubscriptionItem = {
@@ -54,6 +55,7 @@ export function DashboardClient() {
   const [detailItem, setDetailItem] = useState<SubscriptionItem | null>(null);
   const [settingsItem, setSettingsItem] = useState<SubscriptionItem | null>(null);
   const [manualCopyText, setManualCopyText] = useState("");
+  const [displayTimeZone, setDisplayTimeZone] = useState<string | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
   async function load() {
@@ -71,6 +73,10 @@ export function DashboardClient() {
 
   useEffect(() => {
     void load();
+    void fetch("/api/app-config", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => setDisplayTimeZone(data.displayTimeZone || null))
+      .catch(() => setDisplayTimeZone(null));
   }, []);
 
   async function remove(id: string) {
@@ -211,15 +217,15 @@ export function DashboardClient() {
                         <StatusPill tone="amber"><Sparkles className="h-3 w-3" />本地订阅</StatusPill>
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                        <StatusPill tone="slate"><CalendarClock className="h-3 w-3" />创建 {formatDate(item.createdAt)}</StatusPill>
-                        <StatusPill tone="violet"><RefreshCw className="h-3 w-3" />更新 {formatDate(item.updatedAt)}</StatusPill>
+                        <StatusPill tone="slate"><CalendarClock className="h-3 w-3" />创建 {formatDate(item.createdAt, displayTimeZone)}</StatusPill>
+                        <StatusPill tone="violet"><RefreshCw className="h-3 w-3" />更新 {formatDate(item.updatedAt, displayTimeZone)}</StatusPill>
                         <StatusPill tone={item.settings.autoUpdate ? "emerald" : "slate"}>
                           <RefreshCw className="h-3 w-3" />
                           {item.settings.autoUpdate ? <>每 <b>{item.settings.updateIntervalHours}</b> 小时</> : "静态订阅"}
                         </StatusPill>
                         <StatusPill tone={item.refreshError ? "rose" : item.cachedAt ? "emerald" : "slate"}>
                           <CalendarClock className="h-3 w-3" />
-                          {item.refreshError ? "刷新失败" : item.cachedAt ? `缓存 ${formatDate(item.cachedAt)}` : "等待预热"}
+                          {item.refreshError ? "刷新失败" : item.cachedAt ? `缓存 ${formatDate(item.cachedAt, displayTimeZone)}` : "等待预热"}
                         </StatusPill>
                         <StatusPill tone="blue"><Link2 className="h-3 w-3" /><b>{item.sourceCount}</b> 个导入源</StatusPill>
                       </div>
@@ -279,7 +285,7 @@ export function DashboardClient() {
         </button>
       </div>
 
-      {detailItem && <SubscriptionDetail item={detailItem} onClose={() => setDetailItem(null)} onCopy={copy} />}
+      {detailItem && <SubscriptionDetail item={detailItem} displayTimeZone={displayTimeZone} onClose={() => setDetailItem(null)} onCopy={copy} />}
       {manualCopyText && <ManualCopyDialog value={manualCopyText} onClose={() => setManualCopyText("")} />}
       {settingsItem && (
         <SubscriptionSettings
@@ -317,7 +323,7 @@ function ActionButton({ label, icon, onClick, disabled, tone }: { label: string;
   return <button className={cn("btn h-8 px-2.5 text-[12px]", toneClass[tone])} onClick={onClick} disabled={disabled}>{icon}{label}</button>;
 }
 
-function SubscriptionDetail({ item, onClose, onCopy }: { item: SubscriptionItem; onClose: () => void; onCopy: (url: string) => void }) {
+function SubscriptionDetail({ item, displayTimeZone, onClose, onCopy }: { item: SubscriptionItem; displayTimeZone: string | null; onClose: () => void; onCopy: (url: string) => void }) {
   const fullUrl = typeof window === "undefined" ? item.url : getFullUrl(item.url);
   const [qrDataUrl, setQrDataUrl] = useState("");
 
@@ -362,8 +368,8 @@ function SubscriptionDetail({ item, onClose, onCopy }: { item: SubscriptionItem;
             <InfoRow label="自动更新" value={item.settings.autoUpdate ? `开启，每 ${item.settings.updateIntervalHours} 小时` : "关闭，返回静态 YAML"} />
             <InfoRow label="智能匹配节点" value={item.settings.smartMatchNodes ? "开启" : "关闭"} />
             <InfoRow label="导入源" value={`${item.sourceCount} 个`} />
-            <InfoRow label="缓存时间" value={item.cachedAt ? formatDate(item.cachedAt) : "暂无缓存"} />
-            <InfoRow label="最后刷新尝试" value={item.lastRefreshAttemptAt ? formatDate(item.lastRefreshAttemptAt) : "暂无记录"} />
+            <InfoRow label="缓存时间" value={item.cachedAt ? formatDate(item.cachedAt, displayTimeZone) : "暂无缓存"} />
+            <InfoRow label="最后刷新尝试" value={item.lastRefreshAttemptAt ? formatDate(item.lastRefreshAttemptAt, displayTimeZone) : "暂无记录"} />
             <InfoRow label="刷新错误" value={item.refreshError || "无"} />
           </div>
         </div>
@@ -515,11 +521,7 @@ function ManualCopyDialog({ value, onClose }: { value: string; onClose: () => vo
   );
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour12: false });
-}
+const formatDate = formatAppDate;
 
 function getFullUrl(url: string) {
   if (typeof window === "undefined") return url;

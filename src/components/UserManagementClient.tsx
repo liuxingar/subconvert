@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KeyRound, Loader2, Plus, RefreshCw, Shield, Trash2, UserPlus, Users } from "lucide-react";
+import { formatAppDate } from "@/lib/date";
 
 type UserItem = {
   id: string;
@@ -22,6 +23,7 @@ export function UserManagementClient() {
   const [saving, setSaving] = useState(false);
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [displayTimeZone, setDisplayTimeZone] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -37,6 +39,10 @@ export function UserManagementClient() {
 
   useEffect(() => {
     void load();
+    void fetch("/api/app-config", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => setDisplayTimeZone(data.displayTimeZone || null))
+      .catch(() => setDisplayTimeZone(null));
   }, []);
 
   async function create(event: React.FormEvent) {
@@ -135,7 +141,7 @@ export function UserManagementClient() {
               {user.kind === "admin" ? <Shield className="h-3 w-3" /> : <Users className="h-3 w-3" />}
               {user.role}
             </span>
-            <span className="text-xs text-white/45">{formatDate(user.createdAt)}</span>
+            <span className="text-xs text-white/45">{formatDate(user.createdAt, displayTimeZone)}</span>
             <div className="flex gap-2">
               <input
                 className="input h-8 px-2 py-1 text-xs"
@@ -168,8 +174,4 @@ export function UserManagementClient() {
   );
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour12: false });
-}
+const formatDate = formatAppDate;

@@ -78,6 +78,16 @@ SQLite 数据库默认存储在：
 
 Docker Compose 会把本地 `./data` 挂载到容器内 `/app/data`。
 
+## 显示时区
+
+SQLite 中的时间按 UTC 存储，前端展示时会按配置的时区转换。默认示例使用东八区：
+
+```text
+SUBBOOST_DISPLAY_TIME_ZONE=Asia/Shanghai
+```
+
+该值支持 IANA 时区名称，例如 `Asia/Shanghai`、`UTC`、`America/New_York`。不设置时会使用浏览器本地时区。
+
 ## 定时刷新与预热
 
 订阅创建或编辑后，当前生成的 YAML 会立即写入缓存。应用启动后会启动后台调度器，默认每 300 秒扫描一次 SQLite 中的订阅：
@@ -133,6 +143,7 @@ docker run -d --name subboost-local \
   -v subboost-data:/app/data \
   -e ADMIN_PASSWORD=change-me \
   -e LOCAL_USER_PASSWORD=local \
+  -e SUBBOOST_DISPLAY_TIME_ZONE=Asia/Shanghai \
   -e SUBBOOST_SCHEDULER_ENABLED=true \
   -e SUBBOOST_REFRESH_SCAN_SECONDS=300 \
   ghcr.io/liuxingar/subconvert:latest
