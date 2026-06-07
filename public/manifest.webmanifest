@@ -1,0 +1,11 @@
+{
+  "name": "SubBoost Local - Clash 订阅转换与管理服务",
+  "short_name": "SubBoost",
+  "description": "本地化部署的 Clash 订阅转换、生成与管理工具。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0d1a",
+  "theme_color": "#1e1b4b",
+  "orientation": "portrait-primary",
+  "categories": ["utilities", "productivity"]
+}

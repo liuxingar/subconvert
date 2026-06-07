@@ -1,0 +1,14 @@
+services:
+  subboost-local:
+    build: .
+    image: subboost-local:latest
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_PATH: /app/data/subboost.db
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: change-me
+      LOCAL_USER_PASSWORD: local
+      APP_VERSION: 0.1.0-local
+    volumes:
+      - ./data:/app/data
