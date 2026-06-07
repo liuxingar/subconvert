@@ -18,34 +18,42 @@ export function LoginClient() {
   async function submitUser(event: React.FormEvent) {
     event.preventDefault();
     setError("");
-    const endpoint = authMode === "login" ? "/api/auth/local-login" : "/api/auth/register";
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: localUsername, password: localPassword })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setError(data.error || (authMode === "login" ? "登录失败" : "注册失败"));
-      return;
+    try {
+      const endpoint = authMode === "login" ? "/api/auth/local-login" : "/api/auth/register";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: localUsername, password: localPassword })
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) {
+        setError(data.error || (authMode === "login" ? "登录失败" : "注册失败"));
+        return;
+      }
+      window.location.href = getSafeNextPath(new URLSearchParams(window.location.search).get("next"));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "登录请求失败，请检查服务是否正常运行");
     }
-    window.location.href = getSafeNextPath(new URLSearchParams(window.location.search).get("next"));
   }
 
   async function submitAdmin(event: React.FormEvent) {
     event.preventDefault();
     setError("");
-    const response = await fetch("/api/admin/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setError(data.error || "登录失败");
-      return;
+    try {
+      const response = await fetch("/api/admin/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) {
+        setError(data.error || "登录失败");
+        return;
+      }
+      window.location.href = "/admin";
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "管理员登录请求失败，请检查服务是否正常运行");
     }
-    window.location.href = "/admin";
   }
 
   return (
@@ -109,4 +117,15 @@ function authTabClass(active: boolean) {
 function getSafeNextPath(next: string | null) {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return "/dashboard";
   return next;
+}
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as { error?: string };
+  } catch {
+    if (!response.ok) throw new Error(`服务返回异常响应（HTTP ${response.status}）`);
+    throw new Error("服务返回格式异常");
+  }
 }
