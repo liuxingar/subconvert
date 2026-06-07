@@ -13,6 +13,9 @@ type SubscriptionItem = {
   createdAt: string;
   updatedAt: string;
   cachedAt: string | null;
+  lastRefreshAttemptAt: string | null;
+  refreshError: string | null;
+  refreshErrorAt: string | null;
   sourceCount: number;
   templateId: string;
   settings: {
@@ -207,8 +210,13 @@ export function DashboardClient() {
                           <RefreshCw className="h-3 w-3" />
                           {item.settings.autoUpdate ? <>每 <b>{item.settings.updateIntervalHours}</b> 小时</> : "静态订阅"}
                         </StatusPill>
+                        <StatusPill tone={item.refreshError ? "rose" : item.cachedAt ? "emerald" : "slate"}>
+                          <CalendarClock className="h-3 w-3" />
+                          {item.refreshError ? "刷新失败" : item.cachedAt ? `缓存 ${formatDate(item.cachedAt)}` : "等待预热"}
+                        </StatusPill>
                         <StatusPill tone="blue"><Link2 className="h-3 w-3" /><b>{item.sourceCount}</b> 个导入源</StatusPill>
                       </div>
+                      {item.refreshError && <div className="mt-2 max-w-3xl truncate text-[11px] text-rose-200/80">最近刷新失败：{item.refreshError}</div>}
                     </div>
                   </div>
                 </div>
@@ -318,6 +326,8 @@ function SubscriptionDetail({ item, onClose, onCopy }: { item: SubscriptionItem;
           <InfoRow label="智能匹配节点" value={item.settings.smartMatchNodes ? "开启" : "关闭"} />
           <InfoRow label="导入源" value={`${item.sourceCount} 个`} />
           <InfoRow label="缓存时间" value={item.cachedAt ? formatDate(item.cachedAt) : "暂无缓存"} />
+          <InfoRow label="最后刷新尝试" value={item.lastRefreshAttemptAt ? formatDate(item.lastRefreshAttemptAt) : "暂无记录"} />
+          <InfoRow label="刷新错误" value={item.refreshError || "无"} />
           <InfoRow label="Token" value={item.token} />
         </div>
         <div className="mt-6 flex justify-end gap-3">
@@ -377,7 +387,7 @@ function SubscriptionSettings({
           />
           <SettingToggle
             title="启用自动更新"
-            description="开启后客户端拉取订阅时会按间隔刷新缓存。"
+            description="开启后后台任务会按间隔主动预热缓存，客户端拉取时优先返回缓存。"
             checked={autoUpdate}
             onToggle={() => setAutoUpdate((value) => !value)}
           />

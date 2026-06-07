@@ -18,6 +18,50 @@ export type StoredSubscriptionConfig = {
   };
 };
 
+export function parseStoredSubscriptionConfig(configJson: string): StoredSubscriptionConfig {
+  try {
+    const config = JSON.parse(configJson) as StoredSubscriptionConfig;
+    return normalizeStoredSubscriptionConfig(config);
+  } catch {
+    return { templateId: "builtin-minimal", sources: [], settings: normalizeSubscriptionSettings(undefined) };
+  }
+}
+
+export function normalizeStoredSubscriptionConfig(config: StoredSubscriptionConfig): StoredSubscriptionConfig {
+  return {
+    templateId: config.templateId || "builtin-minimal",
+    sources: Array.isArray(config.sources) ? config.sources : [],
+    yaml: config.yaml,
+    mode: config.mode === "advanced" ? "advanced" : "quick",
+    advancedYaml: config.advancedYaml,
+    advancedSettings: config.advancedSettings,
+    settings: normalizeSubscriptionSettings(config.settings)
+  };
+}
+
+export function normalizeSubscriptionSettings(settings: StoredSubscriptionConfig["settings"]) {
+  return {
+    smartMatchNodes: settings?.smartMatchNodes !== false,
+    autoUpdate: settings?.autoUpdate === true,
+    updateIntervalHours: Math.max(1, Number(settings?.updateIntervalHours) || 24)
+  };
+}
+
+export function shouldUseSubscriptionCache(config: StoredSubscriptionConfig, cachedAt: string | null, now = Date.now()) {
+  if (config.settings?.autoUpdate !== true || !cachedAt) return false;
+  const cachedTime = new Date(cachedAt).getTime();
+  if (!Number.isFinite(cachedTime)) return false;
+  return now - cachedTime < getUpdateIntervalMs(config);
+}
+
+export function isSubscriptionRefreshDue(config: StoredSubscriptionConfig, timestamps: { cachedAt: string | null; lastRefreshAttemptAt?: string | null; createdAt: string }, now = Date.now()) {
+  if (config.settings?.autoUpdate !== true) return false;
+  if (!timestamps.cachedAt && !timestamps.lastRefreshAttemptAt) return true;
+  const baseline = latestTimestamp([timestamps.cachedAt, timestamps.lastRefreshAttemptAt, timestamps.createdAt]);
+  if (!baseline) return true;
+  return now - baseline >= getUpdateIntervalMs(config);
+}
+
 export async function renderSubscriptionYaml(config: StoredSubscriptionConfig) {
   if (config.settings?.autoUpdate === false && config.yaml) return config.yaml;
 
@@ -37,6 +81,17 @@ export async function renderSubscriptionYaml(config: StoredSubscriptionConfig) {
   if (nodes.length === 0) throw new Error(errors[0] || "订阅没有可用节点");
   const matchedNodes = config.settings?.smartMatchNodes !== false ? smartMatchNodes(nodes, config.yaml) : nodes;
   return generateConfig(matchedNodes, getTemplate(config.templateId)).yaml;
+}
+
+function getUpdateIntervalMs(config: StoredSubscriptionConfig) {
+  return Math.max(1, Number(config.settings?.updateIntervalHours) || 24) * 60 * 60 * 1000;
+}
+
+function latestTimestamp(values: Array<string | null | undefined>) {
+  const times = values
+    .map((value) => (value ? new Date(value).getTime() : Number.NaN))
+    .filter((value) => Number.isFinite(value));
+  return times.length ? Math.max(...times) : 0;
 }
 
 function smartMatchNodes(nodes: ProxyNode[], previousYaml: string | undefined) {

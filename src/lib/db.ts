@@ -85,6 +85,9 @@ function migrate(conn: DatabaseSync) {
       token TEXT NOT NULL UNIQUE,
       cached_yaml TEXT,
       cached_at TEXT,
+      last_refresh_attempt_at TEXT,
+      refresh_error TEXT,
+      refresh_error_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -92,6 +95,9 @@ function migrate(conn: DatabaseSync) {
   ensureColumn(conn, "subscriptions", "user_id", "TEXT");
   ensureColumn(conn, "subscriptions", "cached_yaml", "TEXT");
   ensureColumn(conn, "subscriptions", "cached_at", "TEXT");
+  ensureColumn(conn, "subscriptions", "last_refresh_attempt_at", "TEXT");
+  ensureColumn(conn, "subscriptions", "refresh_error", "TEXT");
+  ensureColumn(conn, "subscriptions", "refresh_error_at", "TEXT");
 }
 
 function seed(conn: DatabaseSync) {
@@ -279,6 +285,9 @@ export type SubscriptionRecord = {
   token: string;
   cachedYaml: string | null;
   cachedAt: string | null;
+  lastRefreshAttemptAt: string | null;
+  refreshError: string | null;
+  refreshErrorAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -316,7 +325,30 @@ export function deleteSubscription(id: string, userId?: string) {
 }
 
 export function updateSubscriptionCache(id: string, yaml: string) {
-  db().prepare("UPDATE subscriptions SET cached_yaml = ?, cached_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(yaml, id);
+  db()
+    .prepare(
+      `UPDATE subscriptions
+       SET cached_yaml = ?,
+           cached_at = CURRENT_TIMESTAMP,
+           last_refresh_attempt_at = CURRENT_TIMESTAMP,
+           refresh_error = NULL,
+           refresh_error_at = NULL
+       WHERE id = ?`
+    )
+    .run(yaml, id);
+  return getSubscriptionById(id);
+}
+
+export function updateSubscriptionRefreshError(id: string, error: string) {
+  db()
+    .prepare(
+      `UPDATE subscriptions
+       SET last_refresh_attempt_at = CURRENT_TIMESTAMP,
+           refresh_error = ?,
+           refresh_error_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    )
+    .run(error.slice(0, 1000), id);
   return getSubscriptionById(id);
 }
 
@@ -359,6 +391,9 @@ function subscriptionRowToDto(row: Record<string, unknown>): SubscriptionRecord 
     token: String(row.token),
     cachedYaml: row.cached_yaml == null ? null : String(row.cached_yaml),
     cachedAt: row.cached_at == null ? null : String(row.cached_at),
+    lastRefreshAttemptAt: row.last_refresh_attempt_at == null ? null : String(row.last_refresh_attempt_at),
+    refreshError: row.refresh_error == null ? null : String(row.refresh_error),
+    refreshErrorAt: row.refresh_error_at == null ? null : String(row.refresh_error_at),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at)
   };

@@ -1,15 +1,17 @@
 import { getSubscriptionByToken, updateSubscriptionCache } from "@/lib/db";
-import { renderSubscriptionYaml, type StoredSubscriptionConfig } from "@/lib/subscriptionService";
+import { parseStoredSubscriptionConfig, renderSubscriptionYaml, shouldUseSubscriptionCache } from "@/lib/subscriptionService";
+import { startSubscriptionScheduler } from "@/lib/subscriptionScheduler";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_: Request, { params }: { params: Promise<{ token: string }> }) {
+  startSubscriptionScheduler();
   const { token } = await params;
   const subscription = getSubscriptionByToken(token);
   if (!subscription) return new Response("Subscription not found", { status: 404 });
   try {
-    const config = JSON.parse(subscription.configJson) as StoredSubscriptionConfig;
-    if (shouldUseCache(config, subscription.cachedYaml, subscription.cachedAt)) {
+    const config = parseStoredSubscriptionConfig(subscription.configJson);
+    if (subscription.cachedYaml && shouldUseSubscriptionCache(config, subscription.cachedAt)) {
       return yamlResponse(subscription.cachedYaml!);
     }
     const yaml = await renderSubscriptionYaml(config);
@@ -18,14 +20,6 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   } catch (error) {
     return new Response(error instanceof Error ? error.message : "Render failed", { status: 500 });
   }
-}
-
-function shouldUseCache(config: StoredSubscriptionConfig, cachedYaml: string | null, cachedAt: string | null) {
-  if (config.settings?.autoUpdate !== true || !cachedYaml || !cachedAt) return false;
-  const intervalHours = Math.max(1, Number(config.settings.updateIntervalHours) || 24);
-  const cachedTime = new Date(cachedAt).getTime();
-  if (!Number.isFinite(cachedTime)) return false;
-  return Date.now() - cachedTime < intervalHours * 60 * 60 * 1000;
 }
 
 function yamlResponse(yaml: string) {

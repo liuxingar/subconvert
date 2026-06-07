@@ -43,7 +43,9 @@ http://localhost:3000
 - 下载配置文件。
 - 本地用户登录。
 - 登录后生成持久订阅链接。
-- `/sub/{token}` 动态输出订阅 YAML，并在请求时重新抓取订阅 URL。
+- `/sub/{token}` 输出订阅 YAML，优先使用预热缓存；缓存过期时会重新抓取订阅 URL 并刷新缓存。
+- 后台定时任务：对开启自动更新的订阅按 `updateIntervalHours` 主动刷新。
+- 主动预热刷新：应用启动后自动扫描到期订阅，生成并写入 `cached_yaml/cached_at`。
 - 订阅管理页：列表、复制链接、删除、退出登录。
 - FAQ / 使用指南 / Bug反馈分类和搜索。
 - 服务条款。
@@ -54,7 +56,6 @@ http://localhost:3000
 
 - OAuth 登录。
 - AI 辅助配置。
-- 定时任务和主动预热刷新。
 - 自定义模板上传、审核、点赞和收藏。
 - 完整管理后台 CRUD。
 
@@ -76,6 +77,25 @@ SQLite 数据库默认存储在：
 ```
 
 Docker Compose 会把本地 `./data` 挂载到容器内 `/app/data`。
+
+## 定时刷新与预热
+
+订阅创建或编辑后，当前生成的 YAML 会立即写入缓存。应用启动后会启动后台调度器，默认每 300 秒扫描一次 SQLite 中的订阅：
+
+- 只有开启“自动更新”的订阅会进入后台刷新。
+- 每条订阅按自身的 `updateIntervalHours` 判断是否到期，最小间隔为 1 小时。
+- 到期后服务端会主动抓取原始订阅源、重新生成 YAML，并更新 `cached_yaml` 和 `cached_at`。
+- 刷新失败会记录错误和最后尝试时间，避免一直高频重试；下一个更新周期会再次尝试。
+- 客户端访问 `/sub/{token}` 时，如果缓存仍在有效期内，会直接返回缓存；如果缓存过期，则会同步刷新一次。
+
+可通过环境变量调整：
+
+```text
+SUBBOOST_SCHEDULER_ENABLED=true
+SUBBOOST_REFRESH_SCAN_SECONDS=300
+SUBBOOST_REFRESH_ON_STARTUP=true
+SUBBOOST_REFRESH_STARTUP_DELAY_SECONDS=5
+```
 
 ## 本地测试说明
 
@@ -113,5 +133,7 @@ docker run -d --name subboost-local \
   -v subboost-data:/app/data \
   -e ADMIN_PASSWORD=change-me \
   -e LOCAL_USER_PASSWORD=local \
+  -e SUBBOOST_SCHEDULER_ENABLED=true \
+  -e SUBBOOST_REFRESH_SCAN_SECONDS=300 \
   ghcr.io/liuxingar/subconvert:latest
 ```

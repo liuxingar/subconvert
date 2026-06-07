@@ -1000,7 +1000,7 @@ function SubscriptionDialog({
           <div className="border-t border-white/10" />
           <SubscriptionOption
             title="启用自动更新"
-            description="关闭时订阅链接返回本次生成的静态 YAML；开启后客户端拉取时重新抓取订阅源。"
+            description="关闭时订阅链接返回本次生成的静态 YAML；开启后后台任务按间隔主动抓取订阅源并预热缓存。"
             checked={settings.autoUpdate}
             onToggle={() => patch({ autoUpdate: !settings.autoUpdate })}
           />

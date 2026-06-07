@@ -1,10 +1,12 @@
-import { createSubscription, deleteSubscription, getSubscriptionById, listSubscriptions, updateSubscriptionCache, updateSubscriptionSettings } from "@/lib/db";
+import { createSubscription, deleteSubscription, getSubscriptionById, listSubscriptions, updateSubscriptionCache, updateSubscriptionRefreshError, updateSubscriptionSettings } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { renderSubscriptionYaml, type StoredSubscriptionConfig } from "@/lib/subscriptionService";
+import { parseStoredSubscriptionConfig, renderSubscriptionYaml, type StoredSubscriptionConfig } from "@/lib/subscriptionService";
+import { startSubscriptionScheduler } from "@/lib/subscriptionScheduler";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  startSubscriptionScheduler();
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
     user = await requireUser();
@@ -22,6 +24,9 @@ export async function GET() {
         createdAt: subscription.createdAt,
         updatedAt: subscription.updatedAt,
         cachedAt: subscription.cachedAt,
+        lastRefreshAttemptAt: subscription.lastRefreshAttemptAt,
+        refreshError: subscription.refreshError,
+        refreshErrorAt: subscription.refreshErrorAt,
         sourceCount: config.sources.length,
         templateId: config.templateId,
         settings: {
@@ -48,6 +53,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  startSubscriptionScheduler();
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
     user = await requireUser();
@@ -92,6 +98,7 @@ export async function POST(request: Request) {
       }
     })
   });
+  if (typeof body.yaml === "string" && body.yaml.trim()) updateSubscriptionCache(subscription.id, body.yaml);
   return Response.json({
     subscription: {
       id: subscription.id,
@@ -103,6 +110,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  startSubscriptionScheduler();
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
     user = await requireUser();
@@ -119,6 +127,7 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  startSubscriptionScheduler();
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
     user = await requireUser();
@@ -182,6 +191,7 @@ export async function PATCH(request: Request) {
         settings
       })
     });
+    if (updated?.id && typeof body.yaml === "string" && body.yaml.trim()) updateSubscriptionCache(updated.id, body.yaml);
     return Response.json({
       ok: true,
       subscription: {
@@ -194,24 +204,17 @@ export async function PATCH(request: Request) {
   }
   if (body.action !== "refresh") return Response.json({ error: "未知操作" }, { status: 400 });
 
-  const yaml = await renderSubscriptionYaml(parseSubscriptionConfig(subscription.configJson));
-  updateSubscriptionCache(subscription.id, yaml);
-  return Response.json({ ok: true, refreshedAt: new Date().toISOString() });
+  try {
+    const yaml = await renderSubscriptionYaml(parseSubscriptionConfig(subscription.configJson));
+    updateSubscriptionCache(subscription.id, yaml);
+    return Response.json({ ok: true, refreshedAt: new Date().toISOString() });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Refresh failed";
+    updateSubscriptionRefreshError(subscription.id, message);
+    return Response.json({ error: message }, { status: 500 });
+  }
 }
 
 function parseSubscriptionConfig(configJson: string): StoredSubscriptionConfig {
-  try {
-    const config = JSON.parse(configJson) as StoredSubscriptionConfig;
-    return {
-      templateId: config.templateId,
-      sources: Array.isArray(config.sources) ? config.sources : [],
-      yaml: config.yaml,
-      mode: config.mode === "advanced" ? "advanced" : "quick",
-      advancedYaml: config.advancedYaml,
-      advancedSettings: config.advancedSettings,
-      settings: config.settings
-    };
-  } catch {
-    return { templateId: "builtin-minimal", sources: [] };
-  }
+  return parseStoredSubscriptionConfig(configJson);
 }
