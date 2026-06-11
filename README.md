@@ -106,6 +106,8 @@ SUBBOOST_REFRESH_ON_STARTUP=true
 SUBBOOST_REFRESH_STARTUP_DELAY_SECONDS=5
 ```
 
+如果部署在反向代理后且登录接口提示“请求来源不可信”，可以显式配置外部访问地址，例如 `SUBBOOST_PUBLIC_ORIGIN=http://nas.example.com:19070`。
+
 ## 本地测试说明
 
 项目使用 Node 内置的 `node:sqlite`，不需要安装 Visual Studio Build Tools 来编译 SQLite native npm 模块。
