@@ -73,7 +73,7 @@ export function LoginClient() {
           <form className="mb-5 space-y-3" onSubmit={submitUser}>
             <div className="text-sm font-medium text-white/70">{authMode === "login" ? "注册用户登录" : "创建注册用户"}</div>
             <p className="text-xs leading-relaxed text-white/45">
-              {authMode === "login" ? "默认已初始化 local 用户，密码为 local。也可以使用新注册的用户登录。" : "用户名支持 3-32 位字母、数字、下划线或短横线，密码至少 4 位。"}
+              {authMode === "login" ? "默认已初始化 local 用户，密码由 LOCAL_USER_PASSWORD 环境变量配置。也可以使用新注册的用户登录。" : "用户名支持 3-32 位字母、数字、下划线或短横线，密码至少 4 位。"}
             </p>
             <input className="input" placeholder="用户名" value={localUsername} onChange={(event) => setLocalUsername(event.target.value)} />
             <input className="input" type="password" placeholder="密码" value={localPassword} onChange={(event) => setLocalPassword(event.target.value)} />

@@ -1,13 +1,12 @@
-import { cookies } from "next/headers";
 import Link from "next/link";
 import { DashboardClient } from "@/components/DashboardClient";
+import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const cookieStore = await cookies();
-  const loggedIn = Boolean(cookieStore.get("subboost_user") || cookieStore.get("subboost_admin"));
-  if (!loggedIn) {
+  const user = await getCurrentUser();
+  if (!user) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-10">
         <div className="panel rounded-2xl p-6">

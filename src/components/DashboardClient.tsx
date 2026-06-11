@@ -258,31 +258,19 @@ export function DashboardClient() {
         </div>
       </section>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
+      <div className="mt-5 grid gap-4">
         <Link href="/templates" className="panel rounded-xl p-5 hover:bg-white/[0.04]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/18 text-violet-200"><FileCode className="h-5 w-5" /></span>
               <div>
                 <div className="font-semibold">我的模板</div>
-                <div className="text-[12px] text-white/45">管理和分享您的配置模板</div>
+                <div className="text-[12px] text-white/45">浏览和套用配置模板</div>
               </div>
             </div>
             <ExternalLink className="h-4 w-4 text-white/45" />
           </div>
         </Link>
-        <button className="panel rounded-xl p-5 text-left opacity-70" disabled title="本地版暂未提供账户导出设置">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 text-white/60"><Settings className="h-5 w-5" /></span>
-              <div>
-                <div className="font-semibold">账户设置</div>
-                <div className="text-[12px] text-white/45">管理账户和数据导出</div>
-              </div>
-            </div>
-            <ExternalLink className="h-4 w-4 text-white/35" />
-          </div>
-        </button>
       </div>
 
       {detailItem && <SubscriptionDetail item={detailItem} displayTimeZone={displayTimeZone} onClose={() => setDetailItem(null)} onCopy={copy} />}

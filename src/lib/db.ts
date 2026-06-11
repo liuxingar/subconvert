@@ -77,6 +77,14 @@ function migrate(conn: DatabaseSync) {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_kind TEXT NOT NULL CHECK(user_kind IN ('user', 'admin')),
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS subscriptions (
       id TEXT PRIMARY KEY,
       user_id TEXT,
@@ -235,6 +243,41 @@ export function verifyAdminPassword(username: string, password: string) {
   const passwordHash = String(row.password_hash);
   if (!verifyPassword(password, passwordHash)) return null;
   return userRowToDto(row);
+}
+
+export type SessionUser = UserRecord & { isAdmin: boolean };
+
+export function createAuthSession(input: { userId: string; isAdmin: boolean; maxAgeSeconds: number }) {
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + input.maxAgeSeconds * 1000).toISOString();
+  db().prepare("DELETE FROM auth_sessions WHERE expires_at <= ?").run(new Date().toISOString());
+  db()
+    .prepare("INSERT INTO auth_sessions (token, user_id, user_kind, expires_at) VALUES (?, ?, ?, ?)")
+    .run(token, input.userId, input.isAdmin ? "admin" : "user", expiresAt);
+  return { token, expiresAt };
+}
+
+export function getAuthSessionUser(token: string): SessionUser | null {
+  const row = db()
+    .prepare("SELECT token, user_id, user_kind, expires_at FROM auth_sessions WHERE token = ?")
+    .get(token) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const expiresAt = Date.parse(String(row.expires_at));
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    deleteAuthSession(token);
+    return null;
+  }
+  const isAdmin = String(row.user_kind) === "admin";
+  const user = isAdmin ? getAdminUserById(String(row.user_id)) : getUserById(String(row.user_id));
+  if (!user) {
+    deleteAuthSession(token);
+    return null;
+  }
+  return { ...user, isAdmin };
+}
+
+export function deleteAuthSession(token: string) {
+  db().prepare("DELETE FROM auth_sessions WHERE token = ?").run(token);
 }
 
 export function listTemplates(type: "default" | "plaza" | "all", query = "") {

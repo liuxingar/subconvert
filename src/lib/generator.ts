@@ -1,8 +1,10 @@
 import { stringify } from "yaml";
+import { validateNodes } from "@/lib/parser";
 import type { GeneratedConfig, ProxyNode, TemplateConfig } from "@/lib/types";
 
 export function generateConfig(nodes: ProxyNode[], template: TemplateConfig): GeneratedConfig {
-  const nodeNames = nodes.map((node) => node.name);
+  const validNodes = validateNodes(nodes).nodes;
+  const nodeNames = validNodes.map((node) => node.name);
   const firstNode = nodeNames[0] || "DIRECT";
 
   const proxyGroups = template.groups.map((group) => {
@@ -83,7 +85,7 @@ export function generateConfig(nodes: ProxyNode[], template: TemplateConfig): Ge
         QUIC: { ports: [443, 8443] }
       }
     },
-    proxies: nodes.map((node) => sanitizeNode(node.raw)),
+    proxies: validNodes.map((node) => sanitizeNode(node.raw)),
     "proxy-groups": proxyGroups,
     "rule-providers": ruleProviders,
     rules
@@ -91,7 +93,7 @@ export function generateConfig(nodes: ProxyNode[], template: TemplateConfig): Ge
 
   return {
     yaml: stringify(config, { lineWidth: 0 }),
-    nodeCount: nodes.length,
+    nodeCount: validNodes.length,
     proxyGroupCount: proxyGroups.length,
     ruleCount: rules.length,
     groups: template.groups.map((group) => ({
@@ -101,7 +103,7 @@ export function generateConfig(nodes: ProxyNode[], template: TemplateConfig): Ge
       icon: group.icon,
       description: group.description
     })),
-    nodes
+    nodes: validNodes
   };
 }
 

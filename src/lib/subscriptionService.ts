@@ -1,4 +1,5 @@
 import { getTemplate } from "@/data/templates";
+import { applyAdvancedSettings, normalizeAdvancedSettings } from "@/lib/advancedConfig";
 import { parseAppTimestampMs } from "@/lib/date";
 import { generateConfig } from "@/lib/generator";
 import { parseSources, parseYamlNodes } from "@/lib/parser";
@@ -31,11 +32,11 @@ export function parseStoredSubscriptionConfig(configJson: string): StoredSubscri
 export function normalizeStoredSubscriptionConfig(config: StoredSubscriptionConfig): StoredSubscriptionConfig {
   return {
     templateId: config.templateId || "builtin-minimal",
-    sources: Array.isArray(config.sources) ? config.sources : [],
-    yaml: config.yaml,
+    sources: normalizeImportSources(config.sources),
+    yaml: normalizeSubscriptionYaml(config.yaml),
     mode: config.mode === "advanced" ? "advanced" : "quick",
-    advancedYaml: config.advancedYaml,
-    advancedSettings: config.advancedSettings,
+    advancedYaml: normalizeSubscriptionYaml(config.advancedYaml),
+    advancedSettings: normalizeAdvancedSettings(config.advancedSettings),
     settings: normalizeSubscriptionSettings(config.settings)
   };
 }
@@ -81,7 +82,41 @@ export async function renderSubscriptionYaml(config: StoredSubscriptionConfig) {
   if (nodes.length === 0 && config.yaml) return config.yaml;
   if (nodes.length === 0) throw new Error(errors[0] || "订阅没有可用节点");
   const matchedNodes = config.settings?.smartMatchNodes !== false ? smartMatchNodes(nodes, config.yaml) : nodes;
-  return generateConfig(matchedNodes, getTemplate(config.templateId)).yaml;
+  const base = generateConfig(matchedNodes, getTemplate(config.templateId));
+  return config.mode === "advanced" ? applyAdvancedSettings(base, config.advancedSettings, matchedNodes).yaml : base.yaml;
+}
+
+export function normalizeImportSources(input: unknown): ImportSource[] {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, 20).flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const source = item as Partial<ImportSource>;
+    const type = source.type === "yaml" || source.type === "node_links" || source.type === "subscription_url" ? source.type : null;
+    if (!type) return [];
+    const maxValueLength = type === "subscription_url" ? 4096 : 2 * 1024 * 1024;
+    const value = String(source.value || "").trim().slice(0, maxValueLength);
+    if (!value) return [];
+    return [{
+      id: String(source.id || `source-${index}`).slice(0, 80),
+      type,
+      value,
+      tag: source.tag ? String(source.tag).slice(0, 80) : undefined,
+      nameTemplate: source.nameTemplate ? String(source.nameTemplate).slice(0, 200) : undefined
+    }];
+  });
+}
+
+export function normalizeSubscriptionYaml(input: unknown) {
+  if (typeof input !== "string") return undefined;
+  const trimmed = input.trim();
+  return trimmed ? trimmed.slice(0, 2 * 1024 * 1024) : undefined;
+}
+
+export function validateSubscriptionYaml(yaml: string | undefined) {
+  if (!yaml) return null;
+  const parsed = parseYamlNodes(yaml);
+  if (parsed.nodes.length > 0) return null;
+  return parsed.errors[0] || "生成的 YAML 中没有有效节点";
 }
 
 function getUpdateIntervalMs(config: StoredSubscriptionConfig) {

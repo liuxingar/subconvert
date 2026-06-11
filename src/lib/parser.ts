@@ -21,8 +21,11 @@ export function parseSources(sources: ImportSource[]): ParseResult {
             ? parseSubscriptionText(source.resolvedValue)
             : { nodes: [], errors: ["请先点击“导入此源”抓取订阅内容"] };
 
+    const renamedNodes = result.nodes.map((node) => renameNode(node, source));
+    const validated = validateNodes(renamedNodes);
     errors.push(...result.errors.map((error) => `${sourceLabel(source)}: ${error}`));
-    nodes.push(...result.nodes.map((node) => renameNode(node, source)));
+    errors.push(...validated.errors.map((error) => `${sourceLabel(source)}: ${error}`));
+    nodes.push(...validated.nodes);
   }
 
   return { nodes: dedupeNodes(nodes), errors };
@@ -50,12 +53,13 @@ export function parseYamlNodes(input: string): ParseResult {
       return { nodes: [], errors: ["YAML 中没有 proxies 数组"] };
     }
 
-    const nodes = doc.proxies
+    const normalizedNodes = doc.proxies
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
       .map((proxy, index) => normalizeProxy(proxy, `yaml-${index}`))
       .filter((node): node is ProxyNode => Boolean(node));
+    const { nodes, errors } = validateNodes(normalizedNodes);
 
-    return { nodes, errors: nodes.length ? [] : ["proxies 数组为空或节点格式不受支持"] };
+    return { nodes, errors: nodes.length ? errors : [...errors, "proxies 数组为空或节点格式不受支持"] };
   } catch (error) {
     return { nodes: [], errors: [`YAML 解析失败：${error instanceof Error ? error.message : "未知错误"}`] };
   }
@@ -79,7 +83,53 @@ export function parseNodeLinks(input: string): ParseResult {
     }
   }
 
-  return { nodes, errors };
+  const validated = validateNodes(nodes);
+  return { nodes: validated.nodes, errors: [...errors, ...validated.errors] };
+}
+
+export function validateNodes(nodes: ProxyNode[]) {
+  const validNodes: ProxyNode[] = [];
+  const errors: string[] = [];
+  for (const node of nodes) {
+    const nodeErrors = validateProxyNode(node);
+    if (nodeErrors.length) {
+      errors.push(`${node.name || node.type || "未命名节点"} 缺少必要字段：${nodeErrors.join("、")}`);
+      continue;
+    }
+    validNodes.push(node);
+  }
+  return { nodes: validNodes, errors };
+}
+
+export function validateProxyNode(node: ProxyNode) {
+  const errors: string[] = [];
+  const type = String(node.raw.type || node.type || "").toLowerCase();
+  const supportedTypes = new Set(["ss", "vmess", "vless", "trojan", "hysteria2", "tuic", "anytls", "socks5", "socks4", "http", "https", "ssh"]);
+  if (!String(node.raw.name || node.name || "").trim()) errors.push("name");
+  if (!type) errors.push("type");
+  else if (!supportedTypes.has(type)) errors.push(`type(${type})`);
+  if (!String(node.raw.server || node.server || "").trim()) errors.push("server");
+  const port = Number(node.raw.port || node.port || 0);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) errors.push("port");
+
+  if (type === "ss") {
+    if (!String(node.raw.cipher || "").trim()) errors.push("cipher");
+    if (!String(node.raw.password || "").trim()) errors.push("password");
+  }
+  if (type === "vmess" || type === "vless") {
+    if (!String(node.raw.uuid || "").trim()) errors.push("uuid");
+  }
+  if (type === "vmess" && !String(node.raw.cipher || "").trim()) errors.push("cipher");
+  if (["trojan", "hysteria2", "tuic", "anytls"].includes(type) && !String(node.raw.password || "").trim()) {
+    errors.push("password");
+  }
+  if (type === "tuic" && !String(node.raw.uuid || "").trim()) errors.push("uuid");
+  if (type === "ssh") {
+    if (!String(node.raw.username || "").trim()) errors.push("username");
+    if (!String(node.raw.password || node.raw["private-key"] || "").trim()) errors.push("password/private-key");
+  }
+
+  return [...new Set(errors)];
 }
 
 function parseNodeLink(link: string): ProxyNode | null {
@@ -190,9 +240,18 @@ function parseGenericUrl(link: string): ProxyNode {
     raw.encryption = url.searchParams.get("encryption") || "none";
   }
   if (type === "hysteria2") raw.password = username || password;
+  if (type === "anytls") raw.password = username || password;
   if (type === "tuic") {
     raw.uuid = username;
     raw.password = password;
+  }
+  if ((type === "socks5" || type === "socks4" || type === "http" || type === "https") && username) {
+    raw.username = username;
+    if (password) raw.password = password;
+  }
+  if (type === "ssh") {
+    raw.username = username;
+    if (password) raw.password = password;
   }
   if (transport) raw.network = transport;
   if (sni && type === "vless") raw.servername = sni;

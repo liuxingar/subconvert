@@ -1,11 +1,10 @@
-import { cookies } from "next/headers";
 import Link from "next/link";
 import { UserManagementClient } from "@/components/UserManagementClient";
+import { getCurrentUser } from "@/lib/auth";
 
 export default async function AdminPage() {
-  const cookieStore = await cookies();
-  const authed = cookieStore.get("subboost_admin")?.value === "1";
-  if (!authed) {
+  const user = await getCurrentUser();
+  if (!user?.isAdmin) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-10">
         <div className="panel rounded-2xl p-6">

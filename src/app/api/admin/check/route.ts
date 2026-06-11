@@ -1,8 +1,8 @@
-import { cookies } from "next/headers";
+import { getCurrentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const cookieStore = await cookies();
-  return Response.json({ isAdmin: cookieStore.get("subboost_admin")?.value === "1" });
+  const user = await getCurrentUser();
+  return Response.json({ isAdmin: user?.isAdmin === true });
 }

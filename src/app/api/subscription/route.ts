@@ -1,7 +1,9 @@
 import { createSubscription, deleteSubscription, getSubscriptionById, listSubscriptions, updateSubscriptionCache, updateSubscriptionRefreshError, updateSubscriptionSettings } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { parseStoredSubscriptionConfig, renderSubscriptionYaml, type StoredSubscriptionConfig } from "@/lib/subscriptionService";
+import { normalizeImportSources, normalizeSubscriptionYaml, parseStoredSubscriptionConfig, renderSubscriptionYaml, validateSubscriptionYaml, type StoredSubscriptionConfig } from "@/lib/subscriptionService";
 import { startSubscriptionScheduler } from "@/lib/subscriptionScheduler";
+import { normalizeAdvancedSettings } from "@/lib/advancedConfig";
+import { assertSameOrigin, sameOriginErrorResponse } from "@/lib/requestGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +55,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  try {
+    assertSameOrigin(request);
+  } catch {
+    return sameOriginErrorResponse();
+  }
   startSubscriptionScheduler();
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
@@ -74,9 +81,16 @@ export async function POST(request: Request) {
       updateIntervalHours?: number;
     };
   } | null;
+  const sources = normalizeImportSources(body?.sources);
+  const yaml = normalizeSubscriptionYaml(body?.yaml);
   if (!body?.templateId || !Array.isArray(body.sources)) {
     return Response.json({ error: "缺少订阅配置" }, { status: 400 });
   }
+  if (sources.length === 0 && !yaml) {
+    return Response.json({ error: "订阅至少需要一个有效导入源或已生成 YAML" }, { status: 400 });
+  }
+  const yamlError = validateSubscriptionYaml(yaml);
+  if (yamlError) return Response.json({ error: yamlError }, { status: 400 });
   const id = crypto.randomUUID();
   const token = crypto.randomUUID().replaceAll("-", "");
   const subscription = createSubscription({
@@ -86,11 +100,11 @@ export async function POST(request: Request) {
     name: body.name?.trim() || "未命名订阅",
     configJson: JSON.stringify({
       templateId: body.templateId,
-      sources: body.sources,
-      yaml: body.yaml,
+      sources,
+      yaml,
       mode: body.mode === "advanced" ? "advanced" : "quick",
-      advancedYaml: body.advancedYaml,
-      advancedSettings: body.advancedSettings,
+      advancedYaml: normalizeSubscriptionYaml(body.advancedYaml),
+      advancedSettings: normalizeAdvancedSettings(body.advancedSettings),
       settings: {
         smartMatchNodes: body.settings?.smartMatchNodes !== false,
         autoUpdate: body.settings?.autoUpdate === true,
@@ -98,7 +112,7 @@ export async function POST(request: Request) {
       }
     })
   });
-  if (typeof body.yaml === "string" && body.yaml.trim()) updateSubscriptionCache(subscription.id, body.yaml);
+  if (yaml) updateSubscriptionCache(subscription.id, yaml);
   return Response.json({
     subscription: {
       id: subscription.id,
@@ -110,6 +124,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  try {
+    assertSameOrigin(request);
+  } catch {
+    return sameOriginErrorResponse();
+  }
   startSubscriptionScheduler();
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
@@ -127,6 +146,11 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  try {
+    assertSameOrigin(request);
+  } catch {
+    return sameOriginErrorResponse();
+  }
   startSubscriptionScheduler();
   let user: Awaited<ReturnType<typeof requireUser>>;
   try {
@@ -168,9 +192,16 @@ export async function PATCH(request: Request) {
     return Response.json({ ok: true, subscription: updated });
   }
   if (body.action === "updateConfig") {
+    const sources = normalizeImportSources(body.sources);
+    const yaml = normalizeSubscriptionYaml(body.yaml);
     if (!body.templateId || !Array.isArray(body.sources)) {
       return Response.json({ error: "缺少订阅配置" }, { status: 400 });
     }
+    if (sources.length === 0 && !yaml) {
+      return Response.json({ error: "订阅至少需要一个有效导入源或已生成 YAML" }, { status: 400 });
+    }
+    const yamlError = validateSubscriptionYaml(yaml);
+    if (yamlError) return Response.json({ error: yamlError }, { status: 400 });
     const currentConfig = parseSubscriptionConfig(subscription.configJson);
     const settings = {
       smartMatchNodes: body.settings?.smartMatchNodes !== false,
@@ -183,15 +214,15 @@ export async function PATCH(request: Request) {
       configJson: JSON.stringify({
         ...currentConfig,
         templateId: body.templateId,
-        sources: body.sources,
-        yaml: body.yaml,
+        sources,
+        yaml,
         mode: body.mode === "advanced" ? "advanced" : "quick",
-        advancedYaml: body.advancedYaml,
-        advancedSettings: body.advancedSettings,
+        advancedYaml: normalizeSubscriptionYaml(body.advancedYaml),
+        advancedSettings: normalizeAdvancedSettings(body.advancedSettings),
         settings
       })
     });
-    if (updated?.id && typeof body.yaml === "string" && body.yaml.trim()) updateSubscriptionCache(updated.id, body.yaml);
+    if (updated?.id && yaml) updateSubscriptionCache(updated.id, yaml);
     return Response.json({
       ok: true,
       subscription: {
